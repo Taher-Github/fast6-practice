@@ -27,6 +27,10 @@ the last page of every question paper.
 | `pdfs/Test_N_AnswerKey.pdf` | Item number, benchmark, answer, explanation |
 | `pdfs/Question_Bank_Master.pdf` | All 532 items grouped by benchmark, with answers |
 | `DEPLOY.md` | Publishing to GitHub Pages entirely through github.com |
+| `results.html` | Dashboard for saved attempts — scores, weakest benchmarks, every missed item |
+| `SETUP_RESULTS.md` | One-time setup so finished tests save themselves into `results/` |
+| `worker/results-worker.js` | The Cloudflare Worker that holds the token and writes the results |
+| `results/test-NN/*.json` | One file per finished attempt (created automatically) |
 
 Source (only needed to regenerate or extend the bank):
 `blueprint.py`, `gen_common.py`, `gen_nso.py`, `gen_ar.py`, `gen_gr.py`, `gen_dp.py`,
@@ -59,3 +63,11 @@ benchmark text matching the blueprint.
 Twenty items are inherently non-computable (identifying a statistical question, describing the
 shape of a distribution, translating an expression into words). Those are checked structurally
 only, and the report says so and counts them separately.
+
+## Saved attempts
+
+Finished tests write themselves into `results/test-NN/` as JSON — score, per-category and
+per-benchmark breakdown, and for every item the answer given, the correct answer, seconds spent and
+whether it was flagged. Open `results.html` on the site to read them, or browse the folder here.
+Setup is in `SETUP_RESULTS.md`; until it is done, results stay on the device that took the test and
+appear in the app's own attempt history.
