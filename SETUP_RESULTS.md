@@ -35,7 +35,7 @@ When it is running:
 4. Click **Edit code** (or **Continue to project → Edit code**). Delete everything in the editor and
    paste the whole contents of **`worker/results-worker.js`** from this repository. Click **Deploy**.
 
-## Step 3 — the three variables
+## Step 3 — the variables
 
 In the Worker: **Settings → Variables and Secrets → Add**
 
@@ -44,13 +44,26 @@ In the Worker: **Settings → Variables and Secrets → Add**
 | `GH_TOKEN` | **Secret** | the token from step 1 |
 | `GH_REPO` | Text | `Taher-Github/fast6-practice` |
 | `ORIGIN` | Text | `https://taher-github.github.io` |
+| `ADMIN_KEY` | **Secret** | any password you choose — the monitor asks for it once |
 
 **Deploy** again so the variables take effect.
 
 Copy the Worker address shown at the top — it looks like
 `https://fast6-results.<your-subdomain>.workers.dev`.
 
-## Step 4 — point the app at it
+## Step 4 — a KV namespace, for live monitoring
+
+Live progress is kept in Cloudflare KV rather than the repository, so watching a test does not
+create dozens of commits.
+
+1. In the Cloudflare sidebar: **Storage & Databases → KV → Create a namespace**, name it
+   `fast6_progress`, **Add**.
+2. Back in the Worker: **Settings → Bindings → Add → KV namespace**.
+   **Variable name:** `PROGRESS` (exactly this) · **KV namespace:** `fast6_progress` · **Deploy**.
+
+Skipping this step is fine — finished results still save; only the live view is unavailable.
+
+## Step 5 — point the app at it
 
 Open **https://taher-github.github.io/fast6-practice/** on any device, expand
 **Results link (set once)** on the home screen, paste the Worker address, press **Save**.
@@ -58,9 +71,22 @@ Open **https://taher-github.github.io/fast6-practice/** on any device, expand
 That setting lives in that browser, so do it once on the iPad she uses. (Send me the address and I
 can bake it into the page instead, so any device saves results without configuring anything.)
 
+## Watching a test from your own device
+
+Open **https://taher-github.github.io/fast6-practice/results.html** on your phone or laptop, expand
+**Monitor settings**, paste the same Worker address and the `ADMIN_KEY` you chose, press **Save**.
+The panel then refreshes every 15 seconds and shows, for each test being taken right now: the
+student, the test, which question they are on, how many answered, how many correct so far, the
+question numbers already wrong, and elapsed time. The row disappears when the test is submitted and
+the finished result appears in `results/`.
+
+The address and key are stored in **your** browser only — they are not part of the published page,
+so the iPad taking the test cannot read them. Practice-mode runs are deliberately not monitored.
+
 ## Checking it works
 
-Take any test in **practice mode** and finish it — the results screen should end with
+Take any test in **practice mode** and finish it — practice runs still save their result, they are
+only left out of the live view — the results screen should end with
 *"✓ Saved to your GitHub repository under results/."* A new file appears in `results/test-NN/`
 within a few seconds, and `results.html` shows it after a refresh.
 

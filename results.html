@@ -47,11 +47,29 @@ code{background:var(--gray-bar);padding:1px 5px;border-radius:4px;font-size:14px
   <div><a href="index.html">Back to the practice tests</a></div>
 </header>
 <main>
+  <section id="live" class="detail" style="margin-top:0">
+    <h2 style="margin-top:0">Live progress</h2>
+    <div id="liveBody" class="hint">Add your relay address and admin key to watch a test as it is
+      being taken.</div>
+    <details id="liveCfg">
+      <summary style="cursor:pointer;color:var(--muted);min-height:40px">Monitor settings</summary>
+      <div class="filters">
+        <input type="url" id="epIn" placeholder="https://your-worker.workers.dev" style="flex:1;min-width:250px">
+        <input type="password" id="keyIn" placeholder="admin key" style="min-width:160px">
+        <button class="primary" id="epSave">Save</button>
+        <label class="hint"><input type="checkbox" id="autoRef" checked> refresh every 15 s</label>
+      </div>
+      <div class="hint">Both are stored in this browser only — they are never part of the published
+        page, so the student's device cannot read them.</div>
+    </details>
+  </section>
   <div class="hint" id="status">Loading results from the repository…</div>
   <div class="filters" id="filters" hidden>
     <label>Test <select id="fTest"><option value="">all</option></select></label>
     <label>Student <select id="fWho"><option value="">all</option></select></label>
     <button id="reload">Refresh</button>
+    <button id="tabWrong">Wrong answers</button>
+    <button id="tabAtt">Attempts</button>
     <span class="hint" id="count"></span>
   </div>
   <div id="summary"></div>
@@ -110,12 +128,15 @@ function buildFilters(){
     whos.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join("");
   el("fTest").onchange = el("fWho").onchange = render;
   el("reload").onclick = loadAll;
+  el("tabWrong").onclick = () => { VIEW = "wrong"; render(); };
+  el("tabAtt").onclick = () => { VIEW = "attempts"; render(); };
 }
 function filtered(){
   const t = el("fTest").value, w = el("fWho").value;
   return ATTEMPTS.filter(a => (!t || String(a.test) === t) && (!w || (a.student || "—") === w));
 }
 function render(){
+  if (VIEW === "wrong"){ el("summary").innerHTML = ""; return renderWrong(); }
   const rows = filtered();
   el("count").textContent = rows.length + " attempt" + (rows.length === 1 ? "" : "s");
   // per-test summary
@@ -194,7 +215,124 @@ async function toggle(i, rows){
   });
   el("dd" + i).innerHTML = h;
 }
+/* ---------------- live progress ---------------- */
+const CFG = "fast6.admin";
+function cfg(){ try { return JSON.parse(localStorage.getItem(CFG) || "{}"); } catch (e) { return {}; } }
+function setCfg(o){ try { localStorage.setItem(CFG, JSON.stringify(o)); } catch (e) {} }
+let liveTimer = null;
+
+function fmtMin(sec){
+  sec = Math.max(0, Math.round(sec || 0));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + "m " + String(s).padStart(2, "0") + "s";
+}
+async function pollLive(){
+  const c = cfg();
+  const body = el("liveBody");
+  if (!c.ep || !c.key){
+    body.innerHTML = "Add your relay address and admin key in <b>Monitor settings</b> to watch a "
+      + "test as it is being taken.";
+    return;
+  }
+  let d;
+  try {
+    const r = await fetch(c.ep.replace(/\/+$/, "") + "/progress?k=" + encodeURIComponent(c.key)
+                          + "&t=" + Date.now(), {cache: "no-store"});
+    if (r.status === 401){ body.innerHTML = "<span style='color:var(--bad)'>Admin key rejected.</span>"; return; }
+    if (r.status === 501){ body.innerHTML = "The relay has no KV namespace bound yet — see "
+        + "<code>SETUP_RESULTS.md</code>, step 5. Finished results still save normally."; return; }
+    if (!r.ok){ body.innerHTML = "Relay answered " + r.status + "."; return; }
+    d = await r.json();
+  } catch (e) {
+    body.innerHTML = "<span style='color:var(--bad)'>Cannot reach the relay.</span>";
+    return;
+  }
+  const act = d.active || [];
+  if (!act.length){
+    body.innerHTML = "No test in progress right now. <span class='hint'>Checked "
+      + new Date().toLocaleTimeString() + ".</span>";
+    return;
+  }
+  let h = "<table><tr><th>Student</th><th>Test</th><th>Position</th><th>Answered</th>"
+        + "<th>Correct so far</th><th>Wrong questions</th><th>Elapsed</th><th>Last seen</th></tr>";
+  act.forEach(p => {
+    const pct = p.answered ? Math.round(p.correct / p.answered * 100) : 0;
+    const stale = (Date.now() - Date.parse(p.updated)) / 1000;
+    h += `<tr><td>${esc(p.student || "—")}</td><td>Test ${p.test}</td>
+      <td>Q${p.question} of ${p.total}
+        <span class="bar"><i style="width:${Math.round(p.question / p.total * 100)}%"></i></span></td>
+      <td>${p.answered}</td>
+      <td>${p.correct}/${p.answered || 0} · ${pct}%</td>
+      <td>${(p.wrong_numbers || []).length ? esc((p.wrong_numbers || []).map(n => "Q" + n).join(", ")) : "—"}</td>
+      <td>${fmtMin(p.elapsed_seconds)}</td>
+      <td>${stale < 90 ? "just now" : Math.round(stale / 60) + " min ago"}</td></tr>`;
+  });
+  body.innerHTML = h + "</table>";
+}
+function initLive(){
+  const c = cfg();
+  el("epIn").value = c.ep || "";
+  el("keyIn").value = c.key || "";
+  el("epSave").onclick = () => {
+    setCfg({ep: el("epIn").value.trim(), key: el("keyIn").value.trim()});
+    el("liveCfg").open = false;
+    pollLive();
+  };
+  el("autoRef").onchange = () => {
+    if (liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+    if (el("autoRef").checked) liveTimer = setInterval(pollLive, 15000);
+  };
+  liveTimer = setInterval(pollLive, 15000);
+  pollLive();
+}
+
+/* ---------------- wrong-answer register ---------------- */
+let VIEW = "attempts";
+function renderWrong(){
+  const rows = filtered();
+  const reg = {};
+  rows.forEach(a => (a.items || []).filter(x => !x.correct).forEach(x => {
+    const k = a.test + "|" + x.id;
+    const r = reg[k] || (reg[k] = {test: a.test, n: x.n || null, id: x.id, benchmark: x.benchmark,
+                                   type: x.type, difficulty: x.difficulty, times: 0, given: [],
+                                   key: x.key, students: new Set(), last: ""});
+    r.times++;
+    r.given.push(fmtAns(x.response));
+    r.students.add(a.student || "—");
+    if (String(a.finished) > r.last) r.last = String(a.finished);
+  }));
+  const list = Object.values(reg).sort((a, b) => b.times - a.times || a.test - b.test || (a.n || 0) - (b.n || 0));
+  el("count").textContent = list.length + " question" + (list.length === 1 ? "" : "s") + " missed";
+  if (!list.length){ el("list").innerHTML = "<p>No wrong answers in the selected attempts.</p>"; return; }
+  let h = `<h2>Wrong answers by question</h2>
+    <div class="hint">Every question answered incorrectly, with the question number inside its test.
+      Sorted by how often it was missed.</div>
+    <table><tr><th>Test</th><th>Q#</th><th>Item</th><th>Benchmark</th><th>Missed</th>
+      <th>Answer given</th><th>Correct answer</th><th>Type</th></tr>`;
+  list.forEach((r, i) => {
+    h += `<tr class="att" data-w="${i}"><td>Test ${r.test}</td><td><b>Q${r.n || "?"}</b></td>
+      <td>${esc(r.id)}</td><td>${esc(r.benchmark)}</td><td>${r.times}×</td>
+      <td class="yours">${esc(r.given[r.given.length - 1])}</td>
+      <td class="right">${esc(fmtAns(r.key))}</td><td>${esc(String(r.type).replace(/_/g, " "))}</td></tr>
+      <tr id="w${i}" hidden><td colspan="8"><div class="detail" id="ww${i}">…</div></td></tr>`;
+  });
+  el("list").innerHTML = h + "</table>";
+  document.querySelectorAll("tr[data-w]").forEach(tr => tr.onclick = async () => {
+    const i = +tr.dataset.w, row = el("w" + i);
+    row.hidden = !row.hidden;
+    if (row.hidden) return;
+    if (!QUESTIONS){ try { QUESTIONS = await (await fetch("questions.json")).json(); } catch (e) { QUESTIONS = []; } }
+    const q = (QUESTIONS || []).find(x => x.id === list[i].id);
+    el("ww" + i).innerHTML = q
+      ? `<div>${esc(q.stem).replace(/\n/g, "<br>")}</div>
+         <div class="hint" style="margin-top:8px">${esc(q.explanation)}</div>
+         <div class="hint">Answers given: ${esc(list[i].given.join(" · "))}</div>`
+      : "(question text unavailable)";
+  });
+}
+
 loadAll();
+initLive();
 </script>
 </body>
 </html>

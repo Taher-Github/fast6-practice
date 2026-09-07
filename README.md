@@ -64,6 +64,18 @@ Twenty items are inherently non-computable (identifying a statistical question, 
 shape of a distribution, translating an expression into words). Those are checked structurally
 only, and the report says so and counts them separately.
 
+## Monitoring and review
+
+* **Live progress** — `results.html` shows any test being taken right now: current question,
+  answered, correct so far, which question numbers are already wrong, elapsed time. Needs the
+  relay's `ADMIN_KEY`, which lives only in your own browser.
+* **Wrong answers by question** — the same page has a *Wrong answers* view: every question missed
+  across all saved attempts, with test and question number, how many times it was missed, the
+  answer given and the correct answer.
+* **On the student's device** — every wrong answer is kept in a *Questions to review* list on the
+  home screen, grouped by test with question numbers, and **Practice these questions** replays just
+  those items; ones answered correctly leave the list.
+
 ## Saved attempts
 
 Finished tests write themselves into `results/test-NN/` as JSON — score, per-category and

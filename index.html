@@ -524,6 +524,57 @@ function saveSettings(){
   store(LS + ".settings", {practice: S.practice, threshold: S.threshold, student: S.student});
 }
 
+/* ---- live progress pings (admin monitoring) ---- */
+let lastPing = 0;
+function ping(extra){
+  const url = endpoint();
+  if (!url || S.practice || S.reviewRun) return;   // practice and review runs are not monitored
+  const now = Date.now();
+  if (!extra.done && now - lastPing < 4000) return;
+  lastPing = now;
+  const answered = S.resp.filter(r => r !== null && r !== undefined).length;
+  let right = 0, wrongNums = [];
+  S.items.forEach((q, i) => {
+    if (S.resp[i] === null || S.resp[i] === undefined) return;
+    if (isCorrect(q, S.resp[i])) right++; else wrongNums.push(i + 1);
+  });
+  const body = Object.assign({
+    student: S.student || "", test: S.test,
+    question: S.idx + 1, total: S.items.length,
+    answered: answered, correct: right, wrong_numbers: wrongNums,
+    flagged_numbers: S.flags.map((f, i) => f ? i + 1 : 0).filter(Boolean),
+    started: S.started || null,
+    elapsed_seconds: S.started ? Math.round((now - Date.parse(S.started)) / 1000) : 0
+  }, extra || {});
+  try {
+    fetch(url.replace(/\/+$/, "") + "/progress", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body), keepalive: true
+    }).catch(() => {});
+  } catch (e) { /* offline: progress is best effort, the attempt itself is queued */ }
+}
+
+/* ---- the wrong-answer log kept on this device ---- */
+function recordMistakes(rows){
+  const log = store(LS + ".mistakes") || [];
+  const byKey = {};
+  log.forEach(m => byKey[m.test + "|" + m.id] = m);
+  const when = new Date().toISOString();
+  rows.forEach((x, i) => {
+    if (x.ok) return;
+    const k = S.test + "|" + x.q.id;
+    const prev = byKey[k];
+    const rec = {
+      test: S.test, n: i + 1, id: x.q.id, benchmark: x.q.benchmark,
+      category: x.q.reporting_category, type: x.q.type, difficulty: x.q.difficulty,
+      given: x.r === undefined ? null : x.r, key: x.q.answer,
+      times: (prev ? prev.times : 0) + 1, last: when, student: S.student || ""
+    };
+    if (prev) Object.assign(prev, rec); else log.push(rec);
+  });
+  store(LS + ".mistakes", log.slice(-400));
+}
+
 /* ---- sending finished attempts to the results relay ---- */
 function queueAttempt(a){
   const q = store(LS + ".queue") || [];
@@ -587,6 +638,21 @@ function showHome(){
       ${done ? `<span class="badge">last: ${done.pct}%</span>` : ""}</button>`;
   });
   h += "</div>";
+  const mis = store(LS + ".mistakes") || [];
+  if (mis.length){
+    const byTest = {};
+    mis.forEach(m => { (byTest[m.test] = byTest[m.test] || []).push(m); });
+    h += `<h2>Questions to review (${mis.length})</h2>
+      <div class="hint">Every question answered incorrectly is kept here with its test and question
+        number, so it can be looked at again later.</div>
+      <div class="setrow">` +
+      Object.keys(byTest).map(Number).sort((a, b) => a - b).map(t =>
+        `<button class="btn secondary" type="button" data-mt="${t}">Test ${t}
+          <span class="badge">${byTest[t].length}</span></button>`).join("") +
+      `<button class="btn" type="button" id="revAll">Review all</button>
+       <button class="btn secondary" type="button" id="revPractice">Practice these questions</button>
+      </div>`;
+  }
   if (hist.length){
     h += `<h2>Attempt history</h2><div>`;
     hist.slice(-12).reverse().forEach(a => {
@@ -618,15 +684,90 @@ function showHome(){
     showHome();
   };
   document.querySelectorAll(".testcard").forEach(b => b.onclick = () => startTest(+b.dataset.t));
+  document.querySelectorAll("button[data-mt]").forEach(b => b.onclick = () => showReview(+b.dataset.mt));
+  if (el("revAll")) el("revAll").onclick = () => showReview(null);
+  if (el("revPractice")) el("revPractice").onclick = () => practiceMistakes(null);
   if (el("clearBtn")) el("clearBtn").onclick = () => {
     if (confirm("Delete all saved practice results on this device?")){ store(LS + ".attempts", []); showHome(); }
   };
+}
+
+/* ============================ review of wrong answers ============================ */
+function showReview(testFilter){
+  stopTimer();
+  S.screen = "review";
+  el("toolbar").classList.add("hidden");
+  el("footer").classList.add("hidden");
+  el("timer").classList.add("hidden");
+  el("topTitle").textContent = "Questions to review";
+  const all = store(LS + ".mistakes") || [];
+  const mis = (testFilter ? all.filter(m => m.test === testFilter) : all)
+    .slice().sort((a, b) => a.test - b.test || a.n - b.n);
+  const byId = {};
+  QUESTIONS.forEach(q => byId[q.id] = q);
+  let h = `<h1>Questions to review${testFilter ? " — Test " + testFilter : ""}</h1>
+    <div class="hint">${mis.length} question${mis.length === 1 ? "" : "s"} answered incorrectly,
+      newest answer shown for each. They stay here until you clear them.</div>
+    <div class="setrow">
+      <button class="btn" type="button" id="revBack">Back to tests</button>
+      <button class="btn secondary" type="button" id="revPr2">Practice these questions</button>
+      <button class="btn secondary" type="button" id="revClear">Clear this list</button>
+    </div>`;
+  let lastTest = null;
+  mis.forEach(m => {
+    if (m.test !== lastTest){ h += `<h2>Test ${m.test}</h2>`; lastTest = m.test; }
+    const q = byId[m.id];
+    h += `<div class="missed">
+      <div><strong>Question ${m.n}</strong>
+        <span class="badge">${esc(m.id)}</span>
+        <span class="badge">${esc(m.benchmark)}</span>
+        <span class="badge">${esc(m.difficulty)}</span>
+        ${m.times > 1 ? `<span class="badge">missed ${m.times}×</span>` : ""}</div>
+      <div class="stem">${q ? md(q.stem) : ""}</div>
+      ${q ? renderStimulus(Object.assign({}, q, {type: "multiple_choice"})) : ""}
+      <div class="yours">Answer given: ${esc(fmtAns(m.given))}</div>
+      <div class="right">Correct answer: ${esc(fmtAns(m.key))}</div>
+      ${q ? `<div class="hint">${esc(q.explanation)}</div>` : ""}</div>`;
+  });
+  main().innerHTML = h;
+  el("noteBar").textContent = "";
+  el("revBack").onclick = showHome;
+  el("revPr2").onclick = () => practiceMistakes(testFilter);
+  el("revClear").onclick = () => {
+    if (!confirm(testFilter ? `Clear the review list for Test ${testFilter}?`
+                            : "Clear the whole review list?")) return;
+    store(LS + ".mistakes", testFilter ? all.filter(m => m.test !== testFilter) : []);
+    showHome();
+  };
+  window.scrollTo(0, 0);
+}
+function practiceMistakes(testFilter){
+  const all = store(LS + ".mistakes") || [];
+  const mis = (testFilter ? all.filter(m => m.test === testFilter) : all);
+  const byId = {};
+  QUESTIONS.forEach(q => byId[q.id] = q);
+  const items = mis.map(m => byId[m.id]).filter(Boolean);
+  if (!items.length){ alert("Nothing to practice yet."); return; }
+  S.test = testFilter || 0;
+  S.items = items;
+  S.idx = 0;
+  S.resp = items.map(() => null);
+  S.flags = items.map(() => false);
+  S.times = items.map(() => 0);
+  S.started = new Date().toISOString();
+  S.reviewRun = true;
+  S.screen = "test";
+  el("toolbar").classList.remove("hidden");
+  el("footer").classList.remove("hidden");
+  el("btnBack").classList.toggle("hidden", !S.practice);
+  renderQuestion();
 }
 
 /* ============================ test ============================ */
 function startTest(t){
   S.test = t;
   S.items = QUESTIONS.filter(q => q.test === t);
+  S.reviewRun = false;
   S.idx = 0;
   S.resp = S.items.map(() => null);
   S.flags = S.items.map(() => false);
@@ -661,7 +802,9 @@ function renderQuestion(){
   const q = S.items[S.idx];
   S.current = q;
   S.qStart = Date.now();
-  el("topTitle").textContent = "Test " + S.test + " — Grade 6 Mathematics";
+  ping({});
+  el("topTitle").textContent = S.reviewRun ? "Review practice — Grade 6 Mathematics"
+                                           : "Test " + S.test + " — Grade 6 Mathematics";
   el("progress").textContent = "Question " + (S.idx + 1) + " of " + S.items.length;
   el("btnNext").textContent = S.idx === S.items.length - 1 ? "Finish" : "Next";
   el("btnCalc").disabled = !q.calculator_allowed;
@@ -873,6 +1016,7 @@ function finish(){
   el("toolbar").classList.add("hidden");
   el("footer").classList.add("hidden");
   const rows = S.items.map((q, i) => ({q, r: S.resp[i], ok: isCorrect(q, S.resp[i])}));
+  if (S.reviewRun) return finishReview(rows);
   const score = rows.filter(x => x.ok).length, total = rows.length;
   const pct = Math.round(score / total * 100);
   const pass = pct >= S.threshold;
@@ -928,12 +1072,15 @@ function finish(){
     by_category: Object.keys(byCat).reduce((o, k) => (o[k] = {correct: byCat[k][0], total: byCat[k][1]}, o), {}),
     by_benchmark: Object.keys(byBm).reduce((o, k) => (o[k] = {correct: byBm[k][0], total: byBm[k][1]}, o), {}),
     items: rows.map((x, i) => ({
+      n: i + 1,
       id: x.q.id, benchmark: x.q.benchmark, category: x.q.reporting_category,
       type: x.q.type, difficulty: x.q.difficulty, calculator: !!x.q.calculator_allowed,
       correct: x.ok, response: x.r === undefined ? null : x.r, key: x.q.answer,
       seconds: S.times[i] || 0, flagged: !!S.flags[i]
     }))
   };
+  recordMistakes(rows);
+  ping({done: true});
   queueAttempt(attempt);
   const line = el("saveLine");
   if (!endpoint()){
@@ -945,6 +1092,44 @@ function finish(){
         : "\u2713 Saved to your GitHub repository under results/.";
     });
   }
+  window.scrollTo(0, 0);
+}
+
+function finishReview(rows){
+  const fixed = rows.filter(x => x.ok).length;
+  const log = store(LS + ".mistakes") || [];
+  const keep = [];
+  log.forEach(m => {
+    const hit = rows.find(x => x.q.id === m.id);
+    if (!hit){ keep.push(m); return; }
+    if (hit.ok) return;                       // answered correctly this time: it leaves the list
+    m.given = hit.r === undefined ? null : hit.r;
+    m.times = (m.times || 1) + 1;
+    m.last = new Date().toISOString();
+    keep.push(m);
+  });
+  store(LS + ".mistakes", keep);
+  const byId = {};
+  QUESTIONS.forEach(q => byId[q.id] = q);
+  let h = `<h1>Review practice</h1>
+    <div class="score ${fixed === rows.length ? "pass" : ""}">${fixed} of ${rows.length}</div>
+    <div>correct this time — ${rows.length - fixed} question${rows.length - fixed === 1 ? "" : "s"}
+      stay${rows.length - fixed === 1 ? "s" : ""} on the review list.</div>`;
+  rows.filter(x => !x.ok).forEach(x => {
+    h += `<div class="missed"><div><strong>${esc(x.q.id)}</strong>
+      <span class="badge">${esc(x.q.benchmark)}</span></div>
+      <div class="stem">${md(x.q.stem)}</div>
+      <div class="yours">Answer given: ${esc(fmtAns(x.r))}</div>
+      <div class="right">Correct answer: ${esc(fmtAns(x.q.answer))}</div>
+      <div class="hint">${esc(x.q.explanation)}</div></div>`;
+  });
+  h += `<div class="setrow"><button class="btn" type="button" id="rvHome">Back to tests</button>
+        <button class="btn secondary" type="button" id="rvList">See the review list</button></div>`;
+  main().innerHTML = h;
+  el("noteBar").textContent = "";
+  el("rvHome").onclick = showHome;
+  el("rvList").onclick = () => showReview(null);
+  S.reviewRun = false;
   window.scrollTo(0, 0);
 }
 
