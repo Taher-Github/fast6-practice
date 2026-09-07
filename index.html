@@ -528,7 +528,7 @@ function saveSettings(){
 let lastPing = 0;
 function ping(extra){
   const url = endpoint();
-  if (!url || S.practice || S.reviewRun) return;   // practice and review runs are not monitored
+  if (!url) return;                                // every run is reported, including practice
   const now = Date.now();
   if (!extra.done && now - lastPing < 4000) return;
   lastPing = now;
@@ -540,6 +540,7 @@ function ping(extra){
   });
   const body = Object.assign({
     student: S.student || "", test: S.test,
+    mode: S.reviewRun ? "review" : (S.practice ? "practice" : "timed"),
     question: S.idx + 1, total: S.items.length,
     answered: answered, correct: right, wrong_numbers: wrongNums,
     flagged_numbers: S.flags.map((f, i) => f ? i + 1 : 0).filter(Boolean),
@@ -1096,6 +1097,7 @@ function finish(){
 }
 
 function finishReview(rows){
+  ping({done: true});
   const fixed = rows.filter(x => x.ok).length;
   const log = store(LS + ".mistakes") || [];
   const keep = [];

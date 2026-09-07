@@ -66,9 +66,9 @@ only, and the report says so and counts them separately.
 
 ## Monitoring and review
 
-* **Live progress** — `results.html` shows any test being taken right now: current question,
-  answered, correct so far, which question numbers are already wrong, elapsed time. Needs the
-  relay's `ADMIN_KEY`, which lives only in your own browser.
+* **Live progress** — `results.html` shows any run in progress right now — timed, practice or a
+  review run — with the mode, current question, answered, correct so far, which question numbers are
+  already wrong, and elapsed time. Needs the relay's `ADMIN_KEY`, which lives only in your browser.
 * **Wrong answers by question** — the same page has a *Wrong answers* view: every question missed
   across all saved attempts, with test and question number, how many times it was missed, the
   answer given and the correct answer.

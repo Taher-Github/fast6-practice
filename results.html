@@ -253,12 +253,15 @@ async function pollLive(){
       + new Date().toLocaleTimeString() + ".</span>";
     return;
   }
-  let h = "<table><tr><th>Student</th><th>Test</th><th>Position</th><th>Answered</th>"
+  let h = "<table><tr><th>Student</th><th>Test</th><th>Mode</th><th>Position</th><th>Answered</th>"
         + "<th>Correct so far</th><th>Wrong questions</th><th>Elapsed</th><th>Last seen</th></tr>";
   act.forEach(p => {
     const pct = p.answered ? Math.round(p.correct / p.answered * 100) : 0;
     const stale = (Date.now() - Date.parse(p.updated)) / 1000;
-    h += `<tr><td>${esc(p.student || "—")}</td><td>Test ${p.test}</td>
+    const mode = p.mode || "timed";
+    const what = mode === "review" ? "Review practice" : ("Test " + p.test);
+    h += `<tr><td>${esc(p.student || "—")}</td><td>${esc(what)}</td>
+      <td>${mode === "timed" ? "timed" : (mode === "practice" ? "practice (untimed)" : "mistakes")}</td>
       <td>Q${p.question} of ${p.total}
         <span class="bar"><i style="width:${Math.round(p.question / p.total * 100)}%"></i></span></td>
       <td>${p.answered}</td>

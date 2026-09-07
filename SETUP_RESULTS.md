@@ -80,13 +80,16 @@ student, the test, which question they are on, how many answered, how many corre
 question numbers already wrong, and elapsed time. The row disappears when the test is submitted and
 the finished result appears in `results/`.
 
-The address and key are stored in **your** browser only — they are not part of the published page,
-so the iPad taking the test cannot read them. Practice-mode runs are deliberately not monitored.
+Everything is reported: timed tests, untimed practice runs, and *Practice these questions* runs over
+her review list — the **Mode** column says which. A row disappears when that run is submitted, and an
+abandoned one clears itself after three hours.
+
+The address and key are stored in **your** browser only — they are not part of the published page, so
+the iPad taking the test cannot read them.
 
 ## Checking it works
 
-Take any test in **practice mode** and finish it — practice runs still save their result, they are
-only left out of the live view — the results screen should end with
+Take any test in **practice mode** and finish it — the results screen should end with
 *"✓ Saved to your GitHub repository under results/."* A new file appears in `results/test-NN/`
 within a few seconds, and `results.html` shows it after a refresh.
 
