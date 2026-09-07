@@ -81,5 +81,7 @@ only, and the report says so and counts them separately.
 Finished tests write themselves into `results/test-NN/` as JSON — score, per-category and
 per-benchmark breakdown, and for every item the answer given, the correct answer, seconds spent and
 whether it was flagged. Open `results.html` on the site to read them, or browse the folder here.
-Setup is in `SETUP_RESULTS.md`; until it is done, results stay on the device that took the test and
-appear in the app's own attempt history.
+Setup is in `SETUP_RESULTS.md`, which has two routes: the relay (automatic, and the only way to get
+live monitoring) or a plain **Export results file** button on the home screen whose file you upload
+into `results/` yourself, or open directly in the dashboard. Until either is used, results stay on
+the device that took the test and appear in the app's own attempt history.

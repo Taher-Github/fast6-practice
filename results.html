@@ -63,6 +63,10 @@ code{background:var(--gray-bar);padding:1px 5px;border-radius:4px;font-size:14px
         page, so the student's device cannot read them.</div>
     </details>
   </section>
+  <div class="filters" style="margin-bottom:6px">
+    <label class="hint">Open an exported results file:
+      <input type="file" id="fileIn" accept="application/json,.json" multiple></label>
+  </div>
   <div class="hint" id="status">Loading results from the repository…</div>
   <div class="filters" id="filters" hidden>
     <label>Test <select id="fTest"><option value="">all</option></select></label>
@@ -109,7 +113,10 @@ async function loadAll(){
   for (const p of paths){
     try {
       const r = await fetch(RAW + p);
-      if (r.ok){ const a = await r.json(); a._path = p; out.push(a); }
+      if (r.ok){
+        const j = await r.json();
+        (Array.isArray(j) ? j : [j]).forEach(a => { a._path = p; out.push(a); });
+      }
     } catch (e) { /* skip unreadable file */ }
   }
   out.sort((a, b) => String(b.finished || "").localeCompare(String(a.finished || "")));
@@ -333,6 +340,32 @@ function renderWrong(){
       : "(question text unavailable)";
   });
 }
+
+function ingest(list, label){
+  let n = 0;
+  list.forEach(a => {
+    if (!a || typeof a.test !== "number" || !Array.isArray(a.items)) return;
+    a._path = label;
+    if (!ATTEMPTS.some(x => x.finished === a.finished && x.test === a.test && x.pct === a.pct)){
+      ATTEMPTS.push(a); n++;
+    }
+  });
+  ATTEMPTS.sort((x, y) => String(y.finished || "").localeCompare(String(x.finished || "")));
+  el("status").hidden = false;
+  el("status").textContent = n + " attempt" + (n === 1 ? "" : "s") + " loaded from " + label
+    + ". They are shown here only — upload the file into results/ to keep them.";
+  el("filters").hidden = false;
+  buildFilters();
+  render();
+}
+el("fileIn").onchange = async ev => {
+  for (const f of ev.target.files){
+    try {
+      const j = JSON.parse(await f.text());
+      ingest(Array.isArray(j) ? j : [j], f.name);
+    } catch (e) { el("status").textContent = "Could not read " + f.name; }
+  }
+};
 
 loadAll();
 initLive();

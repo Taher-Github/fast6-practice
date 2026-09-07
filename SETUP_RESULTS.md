@@ -17,6 +17,27 @@ When it is running:
 
 ---
 
+## Option B — no relay at all (nothing to set up)
+
+If you would rather not run a Worker, the app can hand you the same data as a file:
+
+1. On the device that took the tests, open the app's home screen. Under **Results saved on this
+   device** press **Export results file** — it saves
+   `fast6-results-<name>-<date>.json`, holding every finished attempt with every answer.
+   (On an iPad it lands in Files → Downloads.)
+2. Read it straight away: open `results.html` and use **Open an exported results file** at the top.
+   Everything works — scores, weakest benchmarks, the wrong-answer register — for that file.
+3. To keep it in the repository so it is there next time: on github.com open **fast6-practice** →
+   **results** → **Add file → Upload files** → drop the exported file in → **Commit changes**.
+   The dashboard reads any file in `results/`, single attempt or exported list alike.
+
+What you give up compared with the relay: it is not automatic, and there is no live progress view —
+watching a test as it happens needs something always reachable, which is what the Worker is.
+
+---
+
+## Option A — the relay (automatic, and enables live monitoring)
+
 ## Step 1 — a token that can only touch this repository
 
 1. **https://github.com/settings/personal-access-tokens/new**

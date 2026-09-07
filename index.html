@@ -639,6 +639,16 @@ function showHome(){
       ${done ? `<span class="badge">last: ${done.pct}%</span>` : ""}</button>`;
   });
   h += "</div>";
+  const arch = store(LS + ".archive") || [];
+  if (arch.length){
+    h += `<h2>Results saved on this device</h2>
+      <div class="hint">${arch.length} finished test${arch.length === 1 ? "" : "s"} with every answer.
+        Export the file and add it to the repository whenever you want the dashboard updated.</div>
+      <div class="setrow">
+        <button class="btn" type="button" id="expBtn">Export results file</button>
+        <button class="btn secondary" type="button" id="expClear">Clear saved results</button>
+      </div>`;
+  }
   const mis = store(LS + ".mistakes") || [];
   if (mis.length){
     const byTest = {};
@@ -680,6 +690,25 @@ function showHome(){
                              : "Finished tests upload to your GitHub repository automatically.";
   });
   el("thr").onchange = e => { S.threshold = Math.max(0, Math.min(100, +e.target.value || 0)); saveSettings(); };
+  if (el("expBtn")) el("expBtn").onclick = () => {
+    const data = store(LS + ".archive") || [];
+    const who = (S.student || "student").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const name = `fast6-results-${who || "student"}-${new Date().toISOString().slice(0, 10)}.json`;
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 1)], {type: "application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    } catch (e) { alert("Could not create the file on this device."); }
+  };
+  if (el("expClear")) el("expClear").onclick = () => {
+    if (confirm("Delete the detailed results stored on this device? The score history stays.")){
+      store(LS + ".archive", []); showHome();
+    }
+  };
   if (el("epSave")) el("epSave").onclick = () => {
     store(LS + ".endpoint", el("epIn").value.trim());
     showHome();
@@ -1082,6 +1111,9 @@ function finish(){
   };
   recordMistakes(rows);
   ping({done: true});
+  const arch = store(LS + ".archive") || [];
+  arch.push(attempt);
+  store(LS + ".archive", arch.slice(-40));
   queueAttempt(attempt);
   const line = el("saveLine");
   if (!endpoint()){
